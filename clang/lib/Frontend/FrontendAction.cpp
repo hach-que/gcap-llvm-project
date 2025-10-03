@@ -157,8 +157,23 @@ void FrontendAction::setCurrentInput(const FrontendInputFile &CurrentInput,
 Module *FrontendAction::getCurrentModule() const {
   CompilerInstance &CI = getCompilerInstance();
   return CI.getPreprocessor().getHeaderSearchInfo().lookupModule(
-      CI.getLangOpts().CurrentModule, SourceLocation(), /*AllowSearch*/false);
+      CI.getLangOpts().CurrentModule, SourceLocation(), /*AllowSearch*/ false);
 }
+
+// GCAP
+
+class GCAPCustomASTConsumer : public ASTConsumer {
+public:
+  void HandleTranslationUnit(ASTContext &AST) override {
+    // @todo: do something with the AST.
+    llvm::errs() << "Hello from GCAP demo!";
+  }
+
+  static std::unique_ptr<ASTConsumer>
+  CreateASTConsumer(clang::CompilerInstance &CI) {
+    return std::make_unique<GCAPCustomASTConsumer>();
+  }
+};
 
 std::unique_ptr<ASTConsumer>
 FrontendAction::CreateWrappedASTConsumer(CompilerInstance &CI,
@@ -183,10 +198,6 @@ FrontendAction::CreateWrappedASTConsumer(CompilerInstance &CI,
   }
   if (!FoundAllPlugins)
     return nullptr;
-
-  // If there are no registered plugins we don't need to wrap the consumer
-  if (FrontendPluginRegistry::begin() == FrontendPluginRegistry::end())
-    return Consumer;
 
   // If this is a code completion run, avoid invoking the plugin consumers
   if (CI.hasCodeCompletionConsumer())
@@ -225,6 +236,9 @@ FrontendAction::CreateWrappedASTConsumer(CompilerInstance &CI,
       }
     }
   }
+
+  // Add custom consumer prior to code generation.
+  Consumers.push_back(GCAPCustomASTConsumer::CreateASTConsumer(CI));
 
   // Add to Consumers the main consumer, then all the plugins that go after it
   Consumers.push_back(std::move(Consumer));
@@ -352,7 +366,7 @@ static std::error_code collectModuleHeaderIncludes(
   if (!Module->MissingHeaders.empty()) {
     auto &MissingHeader = Module->MissingHeaders.front();
     Diag.Report(MissingHeader.FileNameLoc, diag::err_module_header_missing)
-      << MissingHeader.IsUmbrella << MissingHeader.FileName;
+        << MissingHeader.IsUmbrella << MissingHeader.FileName;
     return std::error_code();
   }
 
@@ -504,7 +518,7 @@ static Module *prepareToBuildModule(CompilerInstance &CI,
                               /*AllowSearch=*/true);
   if (!M) {
     CI.getDiagnostics().Report(diag::err_missing_module)
-      << CI.getLangOpts().CurrentModule << ModuleMapFilename;
+        << CI.getLangOpts().CurrentModule << ModuleMapFilename;
 
     return nullptr;
   }
@@ -529,14 +543,14 @@ static Module *prepareToBuildModule(CompilerInstance &CI,
                                                /*openFile*/ true);
     if (!OriginalModuleMap) {
       CI.getDiagnostics().Report(diag::err_module_map_not_found)
-        << OriginalModuleMapName;
+          << OriginalModuleMapName;
       return nullptr;
     }
     if (*OriginalModuleMap != CI.getSourceManager().getFileEntryRefForID(
                                   CI.getSourceManager().getMainFileID())) {
       M->IsInferred = true;
       CI.getPreprocessor().getHeaderSearchInfo().getModuleMap()
-        .setInferredModuleAllowedBy(M, *OriginalModuleMap);
+          .setInferredModuleAllowedBy(M, *OriginalModuleMap);
     }
   }
 
@@ -569,7 +583,7 @@ getInputBufferForModule(CompilerInstance &CI, Module *M) {
 
   if (Err) {
     CI.getDiagnostics().Report(diag::err_module_cannot_create_includes)
-      << M->getFullModuleName() << Err.message();
+        << M->getFullModuleName() << Err.message();
     return nullptr;
   }
 
@@ -613,7 +627,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
     IntrusiveRefCntPtr<DiagnosticsEngine> ASTDiags(
         new DiagnosticsEngine(Diags->getDiagnosticIDs(),
                               &Diags->getDiagnosticOptions()));
-    ASTDiags->setClient(Diags->getClient(), /*OwnsClient*/false);
+    ASTDiags->setClient(Diags->getClient(), /*OwnsClient*/ false);
 
     // FIXME: What if the input is a memory buffer?
     StringRef InputFile = Input.getFile();
@@ -741,7 +755,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
   // Set up embedding for any specified files. Do this before we load any
   // source files, including the primary module map for the compilation.
   for (const auto &F : CI.getFrontendOpts().ModulesEmbedFiles) {
-    if (auto FE = CI.getFileManager().getOptionalFileRef(F, /*openFile*/true))
+    if (auto FE = CI.getFileManager().getOptionalFileRef(F, /*openFile*/ true))
       CI.getSourceManager().setFileIsTransient(*FE);
     else
       CI.getDiagnostics().Report(diag::err_modules_embed_file_not_found) << F;
@@ -917,7 +931,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
   for (const auto &Filename : CI.getFrontendOpts().ModuleMapFiles) {
     if (auto File = CI.getFileManager().getOptionalFileRef(Filename))
       CI.getPreprocessor().getHeaderSearchInfo().loadModuleMapFile(
-          *File, /*IsSystem*/false);
+          *File, /*IsSystem*/ false);
     else
       CI.getDiagnostics().Report(diag::err_module_map_not_found) << Filename;
   }
@@ -1038,7 +1052,7 @@ bool FrontendAction::BeginSourceFile(CompilerInstance &CI,
       CI.hasASTContext() && !CI.getASTContext().getExternalSource()) {
     IntrusiveRefCntPtr<ExternalASTSource>
       Override(new LayoutOverrideSource(
-                     CI.getFrontendOpts().OverrideRecordLayoutsFile));
+        CI.getFrontendOpts().OverrideRecordLayoutsFile));
     CI.getASTContext().setExternalSource(Override);
   }
 
@@ -1184,7 +1198,7 @@ void ASTFrontendAction::ExecuteAction() {
            CI.getFrontendOpts().SkipFunctionBodies);
 }
 
-void PluginASTAction::anchor() { }
+void PluginASTAction::anchor() {}
 
 std::unique_ptr<ASTConsumer>
 PreprocessorFrontendAction::CreateASTConsumer(CompilerInstance &CI,
@@ -1243,4 +1257,4 @@ bool WrapperFrontendAction::hasCodeCompletionSupport() const {
 
 WrapperFrontendAction::WrapperFrontendAction(
     std::unique_ptr<FrontendAction> WrappedAction)
-  : WrappedAction(std::move(WrappedAction)) {}
+    : WrappedAction(std::move(WrappedAction)) {}
