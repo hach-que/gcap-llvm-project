@@ -10,6 +10,7 @@
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclGroup.h"
+#include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/DiagnosticOptions.h"
 #include "clang/Basic/FileEntry.h"
@@ -162,11 +163,44 @@ Module *FrontendAction::getCurrentModule() const {
 
 // GCAP
 
-class GCAPCustomASTConsumer : public ASTConsumer {
+class GCAPCustomASTConsumer : public ASTConsumer,
+    public clang::ast_matchers::MatchFinder::MatchCallback
+{
 public:
   void HandleTranslationUnit(ASTContext &AST) override {
-    // @todo: do something with the AST.
-    llvm::errs() << "Hello from GCAP demo!";
+    using namespace clang::ast_matchers;
+
+    // Get the translation unit node.
+    const auto *UnitDeclEntry = AST.getTranslationUnitDecl();
+    if (UnitDeclEntry == nullptr) {
+      // no AST for some reason; ignore.
+      return;
+    }
+
+    // Create our matcher.
+    std::unique_ptr<ast_matchers::MatchFinder> Finder =
+        std::make_unique<ast_matchers::MatchFinder>();
+    
+    // Add our AST matcher to find a field called 'A'.
+    Finder->addMatcher(fieldDecl(hasName("A")).bind("target"), this);
+
+    // Iterate through top-level declarations.
+    for (const auto &DeclEntry : UnitDeclEntry->decls()) {
+      Finder->matchDecl(DeclEntry, AST);
+    }
+  }
+
+  virtual void
+    run(const clang::ast_matchers::MatchFinder::MatchResult& Result) override 
+  {
+    const Decl* FoundTarget = Result.Nodes.getNodeAs<Decl>("target");
+    if (!FoundTarget) {
+      // 'target' not found in matcher expression, or node wasn't a Decl.
+      return;
+    }
+
+    // @todo: we're just dumping the AST node to output.
+    FoundTarget->dump();
   }
 
   static std::unique_ptr<ASTConsumer>

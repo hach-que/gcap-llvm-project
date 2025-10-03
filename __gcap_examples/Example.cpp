@@ -7,6 +7,9 @@ HELLO()
 class SomeClass {
 private:
     int MyField;
+    int A;
+    int B;
+    int C;
 };
 
 int main() {
