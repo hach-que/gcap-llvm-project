@@ -192,11 +192,55 @@ public:
     this->OurAST = &AST;
 
     // Add our AST matcher.
-    Finder->addMatcher(fieldDecl(matchesName("GCAP.+")).bind("target"), this);
+    Finder->addMatcher(fieldDecl(hasType(qualType(isPODType()))).bind("target"),
+                       this);
+
+    // Get the source manager.
+    const SourceManager &SrcMgr = AST.getSourceManager();
+
+    // Track what file we're currently in, and whether we're matching.
+    FileID CurrentFileID;
+    OptionalFileEntryRef CurrentFileEntry;
+    bool ShouldRunMatcher = false;
 
     // Iterate through top-level declarations.
     for (const auto &DeclEntry : UnitDeclEntry->decls()) {
-      Finder->matchDecl(DeclEntry, AST);
+
+      // Try to figure out if the file this declaration is in has changed.
+      bool FileChanged = false;
+      {
+        FileID NewFileID =
+            SrcMgr.getFileID(SrcMgr.getFileLoc(DeclEntry->getLocation()));
+        if (NewFileID.isInvalid()) {
+          // Not in a real file on disk. Skip matching.
+          continue;
+        }
+
+        FileChanged = (NewFileID != CurrentFileID);
+        if (FileChanged) {
+          // Always set the CurrentFileID, even if the next section fails to
+          // find file data. This allows us to continue quickly skipping over
+          // decls while ever the current file is invalid.
+          CurrentFileID = NewFileID;
+          ShouldRunMatcher = false; 
+        }
+      }
+
+      // If the file has changed, get information about the file.
+      if (FileChanged) {
+        auto FileEntry = SrcMgr.getFileEntryRefForID(CurrentFileID);
+        if (!FileEntry) {
+          // No file entry for current file ID. Skip matching.
+          continue;
+        }
+
+        // Contrived example: Just checking the filename.
+        ShouldRunMatcher = FileEntry->getName().contains("Example.cpp");
+      }
+
+      if (ShouldRunMatcher) {
+        Finder->matchDecl(DeclEntry, AST);
+      }
     }
   }
 
@@ -213,12 +257,8 @@ public:
     clang::SourceLocation Loc = FoundTarget->getSourceRange().getBegin();
 
     // Emit our diagnostic.
-    if (FoundTarget->getNameAsString() == "GCAPErrorField") {
-      this->OurAST->getDiagnostics().Report(Loc, diag::err_gcap_custom_error);
-    } else {
-      this->OurAST->getDiagnostics().Report(Loc, diag::err_gcap_custom_warning)
-          << FoundTarget->getNameAsString();
-    }
+    this->OurAST->getDiagnostics().Report(Loc, diag::err_gcap_custom_warning)
+        << FoundTarget->getNameAsString();
   }
 
   static std::unique_ptr<ASTConsumer>
