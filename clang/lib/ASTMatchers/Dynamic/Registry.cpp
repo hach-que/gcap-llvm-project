@@ -128,6 +128,8 @@ RegistryMaps::RegistryMaps() {
   REGISTER_REGEX_MATCHER(matchesName);
   REGISTER_REGEX_MATCHER(matchesSelector);
 
+  REGISTER_MATCHER(isPODType);
+
   REGISTER_MATCHER(accessSpecDecl);
   REGISTER_MATCHER(addrLabelExpr);
   REGISTER_MATCHER(alignOfExpr);

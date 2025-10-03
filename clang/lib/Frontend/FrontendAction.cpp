@@ -182,7 +182,7 @@ public:
         std::make_unique<ast_matchers::MatchFinder>();
     
     // Add our AST matcher to find a field called 'A'.
-    Finder->addMatcher(fieldDecl(hasName("A")).bind("target"), this);
+    Finder->addMatcher(fieldDecl(hasType(qualType(isPODType()))).bind("target"), this);
 
     // Iterate through top-level declarations.
     for (const auto &DeclEntry : UnitDeclEntry->decls()) {

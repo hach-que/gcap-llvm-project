@@ -6,9 +6,9 @@
 HELLO()
 class SomeClass {
 private:
-    int MyField;
+    std::string MyField;
     int A;
-    int B;
+    std::string B;
     int C;
 };
 
