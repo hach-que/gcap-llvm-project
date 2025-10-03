@@ -167,6 +167,8 @@ class GCAPCustomASTConsumer : public ASTConsumer,
     public clang::ast_matchers::MatchFinder::MatchCallback
 {
 public:
+  ASTContext *OurAST;
+
   void HandleTranslationUnit(ASTContext &AST) override {
     using namespace clang::ast_matchers;
 
@@ -181,8 +183,16 @@ public:
     std::unique_ptr<ast_matchers::MatchFinder> Finder =
         std::make_unique<ast_matchers::MatchFinder>();
     
-    // Add our AST matcher to find a field called 'A'.
-    Finder->addMatcher(fieldDecl(hasType(qualType(isPODType()))).bind("target"), this);
+    // Store a pointer to the AST so we can use it in the callback.
+    // 
+    // @note: It's much safer to create a nested class that implements MatchCallback
+    //        and instantiate that on the stack, passing the AST by reference so that
+    //        we don't have an ASTContext pointer that can last beyond the lifetime
+    //        of this HandleTranslationUnit call.... but this is example code.
+    this->OurAST = &AST;
+
+    // Add our AST matcher.
+    Finder->addMatcher(fieldDecl(matchesName("GCAP.+")).bind("target"), this);
 
     // Iterate through top-level declarations.
     for (const auto &DeclEntry : UnitDeclEntry->decls()) {
@@ -193,14 +203,22 @@ public:
   virtual void
     run(const clang::ast_matchers::MatchFinder::MatchResult& Result) override 
   {
-    const Decl* FoundTarget = Result.Nodes.getNodeAs<Decl>("target");
+    const NamedDecl *FoundTarget = Result.Nodes.getNodeAs<NamedDecl>("target");
     if (!FoundTarget) {
-      // 'target' not found in matcher expression, or node wasn't a Decl.
+      // 'target' not found in matcher expression, or node wasn't a NamedDecl.
       return;
     }
 
-    // @todo: we're just dumping the AST node to output.
-    FoundTarget->dump();
+    // Get the location in the source code of our match.
+    clang::SourceLocation Loc = FoundTarget->getSourceRange().getBegin();
+
+    // Emit our diagnostic.
+    if (FoundTarget->getNameAsString() == "GCAPErrorField") {
+      this->OurAST->getDiagnostics().Report(Loc, diag::err_gcap_custom_error);
+    } else {
+      this->OurAST->getDiagnostics().Report(Loc, diag::err_gcap_custom_warning)
+          << FoundTarget->getNameAsString();
+    }
   }
 
   static std::unique_ptr<ASTConsumer>

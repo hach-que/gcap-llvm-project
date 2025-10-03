@@ -453,4 +453,8 @@ def warn_try_not_valid_on_target : Warning<
   "target '%0' does not support exception handling;"
   " 'catch' block is ignored">,
   InGroup<OpenMPTargetException>;
+
+def err_gcap_custom_error : Error<"this is our custom error">;
+def err_gcap_custom_warning : Warning<"this is our custom warning, for field '%0'">, InGroup<GCAP>;
+
 }
